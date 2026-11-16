@@ -8,6 +8,7 @@
  * Features:
  * - LINE LIFF Login
  * - Dynamic Student Payment Items
+ * - Payment Status: UNPAID / PENDING / APPROVED
  * - Dynamic PromptPay QR with Amount
  * - PromptPay Settings from Google Sheets
  * - Slip Upload and Compression
@@ -282,7 +283,6 @@ async function loadAppData() {
 
   STATE.members = data.members;
 
-  // รับข้อมูล PromptPay จาก Google Sheets
   STATE.promptPay = data.promptPay || null;
 
   STATE.items = [];
@@ -431,7 +431,6 @@ async function loadItemsForStudent(studentId) {
 
     STATE.items = data.items;
 
-    // อัปเดต PromptPay จาก Backend ด้วย
     if (data.promptPay) {
       STATE.promptPay = data.promptPay;
     }
@@ -476,7 +475,7 @@ async function loadItemsForStudent(studentId) {
 
 
 // ==================================================
-// 10. RENDER PAYMENT ITEMS
+// 10. RENDER PAYMENT ITEMS WITH STATUS
 // ==================================================
 
 function renderItemsCheckboxes(items) {
@@ -515,10 +514,32 @@ function renderItemsCheckboxes(items) {
       return;
     }
 
+    const status = item.status || '❌';
+
+    const isApproved = status === '✅';
+    const isPending = status === '⚠️';
+
+    const canPay =
+      item.canPay !== false &&
+      !isApproved &&
+      !isPending;
+
     const div = document.createElement('div');
 
     div.className = 'checkbox-item';
 
+    div.style.padding = '12px';
+    div.style.marginBottom = '8px';
+    div.style.border = '1px solid #e5e7eb';
+    div.style.borderRadius = '10px';
+    div.style.boxSizing = 'border-box';
+
+    if (!canPay) {
+      div.style.backgroundColor = '#f9fafb';
+      div.style.opacity = '0.85';
+    }
+
+    // Checkbox
     const checkbox = document.createElement('input');
 
     checkbox.type = 'checkbox';
@@ -528,6 +549,10 @@ function renderItemsCheckboxes(items) {
     checkbox.dataset.title = item.title;
     checkbox.dataset.amount = String(price);
 
+    // ปิดการเลือกถ้าจ่ายแล้วหรือรอตรวจสอบ
+    checkbox.disabled = !canPay;
+
+    // Label
     const label = document.createElement('label');
 
     label.htmlFor = item.id;
@@ -538,8 +563,33 @@ function renderItemsCheckboxes(items) {
       price.toLocaleString('en-US') +
       ' บาท';
 
+    // Status
+    const statusElement = document.createElement('span');
+
+    statusElement.className = 'payment-status';
+
+    if (isApproved) {
+      statusElement.textContent = '✅ จ่ายแล้ว';
+      statusElement.style.color = '#16a34a';
+
+    } else if (isPending) {
+      statusElement.textContent = '⚠️ รอตรวจสอบ';
+      statusElement.style.color = '#d97706';
+
+    } else {
+      statusElement.textContent = '❌ ยังไม่จ่าย';
+      statusElement.style.color = '#dc2626';
+    }
+
+    statusElement.style.display = 'block';
+    statusElement.style.fontSize = '13px';
+    statusElement.style.fontWeight = '600';
+    statusElement.style.marginTop = '5px';
+
+    // เพิ่มองค์ประกอบ
     div.appendChild(checkbox);
     div.appendChild(label);
+    div.appendChild(statusElement);
 
     container.appendChild(div);
   });
@@ -637,14 +687,12 @@ function generatePromptPayPayload(target, amount) {
 
   const amountText = paymentAmount.toFixed(2);
 
-  // PromptPay Merchant Account Information
   const merchantAccount =
     makeTLV('00', 'A000000677010111') +
     makeTLV(targetType, formattedTarget);
 
   const tag29 = makeTLV('29', merchantAccount);
 
-  // EMVCo Payload
   let payload =
     '000201' +
     '010212' +
@@ -653,7 +701,6 @@ function generatePromptPayPayload(target, amount) {
     makeTLV('54', amountText) +
     '5802TH';
 
-  // CRC16
   payload += '6304';
 
   payload += crc16(payload);
@@ -870,7 +917,6 @@ async function renderPromptPayQR(amount) {
 
   const renderId = ++STATE.qrRenderId;
 
-  // ไม่แสดง QR ถ้ายังไม่ได้เลือกรายการ
   if (!Number.isFinite(amount) || amount <= 0) {
     section.style.display = 'none';
 
@@ -998,7 +1044,6 @@ function calculateTotal() {
       });
   }
 
-  // อัปเดต QR ตามยอดเงิน
   renderPromptPayQR(total);
 
   return total;
@@ -1045,7 +1090,6 @@ function setupEventListeners() {
           slipInput.value = '';
         }
 
-        // ยกเลิกผลการโหลดรายการเก่า
         STATE.items = [];
 
         renderItemsCheckboxes([]);
@@ -1259,6 +1303,27 @@ async function handleFormSubmit(event) {
       title: checkbox.dataset.title
     });
   });
+
+  // ตรวจสอบสถานะจากข้อมูลที่โหลดไว้ก่อนส่ง
+  const invalidSelection = selectedItems.find(function(selected) {
+    const item = STATE.items.find(function(current) {
+      return current.id === selected.id;
+    });
+
+    return !item ||
+      item.status === '⚠️' ||
+      item.status === '✅' ||
+      item.canPay === false;
+  });
+
+  if (invalidSelection) {
+    alert(
+      'มีรายการที่กำลังรอตรวจสอบหรือชำระแล้ว กรุณาโหลดรายการใหม่'
+    );
+
+    await loadItemsForStudent(studentId);
+    return;
+  }
 
   const totalAmount = calculateTotal();
 
