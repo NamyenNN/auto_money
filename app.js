@@ -1,9 +1,9 @@
-// === 1. ตั้งค่าการเชื่อมต่อ (แก้ไขข้อมูลของคุณตรงนี้) ===
+// === 1. ตั้งค่าการเชื่อมต่อ ===
 const CONFIG = {
   GAS_WEB_APP_URL: 'https://script.google.com/macros/s/AKfycby4GAoq5mkXVXWXvL4sd2eENyPUZ6XONYGzNQ3z3vXn_Ak2bJkWSW8NHKNdNnr5Quy5/exec',
-  LIFF_ID: '2012645761-WmDBRWza', // ปล่อยว่างไว้ได้ถ้ายังไม่ได้สร้าง LIFF
-  MAX_IMAGE_WIDTH: 800,           // ความกว้างสูงสุดของรูปสลิปหลังบีบอัด (px)
-  IMAGE_QUALITY: 0.7              // คุณภาพไฟล์ JPEG (0.1 - 1.0)
+  LIFF_ID: '2012645761-WmDBRWza',
+  MAX_IMAGE_WIDTH: 800,
+  IMAGE_QUALITY: 0.7
 };
 
 // ตัวแปรเก็บสถานะของระบบ
@@ -64,7 +64,6 @@ function renderMembersDropdown(members) {
     opt.dataset.name = m.name;
     opt.textContent = `${m.studentId} - ${m.name}`;
     
-    // เลือกชื่อให้อัตโนมัติถ้า LINE User ID ตรงกับฐานข้อมูล
     if (m.lineUserId === STATE.lineUserId && STATE.lineUserId !== 'GUEST') {
       opt.selected = true;
     }
@@ -76,7 +75,6 @@ function renderMembersDropdown(members) {
 function renderItemsCheckboxes(items) {
   const container = document.getElementById('itemsContainer');
   items.forEach(item => {
-    // ดึงตัวเลขราคาจากในวงเล็บ เช่น "ค่าห้อง (200)" -> 200
     const priceMatch = item.title.match(/\((.*?)\)/);
     const price = priceMatch ? parseFloat(priceMatch[1]) || 0 : 0;
 
@@ -92,13 +90,8 @@ function renderItemsCheckboxes(items) {
 
 // ผูก Event การกดปุ่มและเลือกไฟล์
 function setupEventListeners() {
-  // คำนวณเงินใหม่ทุกครั้งที่ติ๊ก Checkbox
   document.getElementById('itemsContainer').addEventListener('change', calculateTotal);
-  
-  // บีบอัดรูปทันทีที่เลือกไฟล์สลิป
   document.getElementById('slipInput').addEventListener('change', handleImageUpload);
-  
-  // จัดการตอนกดปุ่มส่งฟอร์ม
   document.getElementById('paymentForm').addEventListener('submit', handleFormSubmit);
 }
 
