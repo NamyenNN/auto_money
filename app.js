@@ -56,36 +56,27 @@ const STATE = {
 // 3. INITIALIZE APPLICATION
 // ==================================================
 
+
 window.addEventListener('DOMContentLoaded', async function() {
-
   try {
-
     showLoading('กำลังเชื่อมต่อระบบ...');
 
-    // เชื่อมต่อ LINE LIFF
     const liffReady = await initLiff();
 
-    // ถ้ากำลัง redirect ไปหน้า Login ให้หยุดก่อน
     if (liffReady === 'redirect') {
       return;
     }
 
-    // โหลดข้อมูลจาก Google Sheets
     await loadAppData();
-
-    // ผูก Event ต่าง ๆ
     setupEventListeners();
 
   } catch (error) {
-
     console.error('Application Init Error:', error);
 
     showError(
-      'ไม่สามารถเริ่มต้นระบบได้ กรุณาลองใหม่อีกครั้ง'
+      'เกิดข้อผิดพลาด: ' + (error.message || error)
     );
-
   }
-
 });
 
 
