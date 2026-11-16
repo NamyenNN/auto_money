@@ -6,7 +6,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ระบบแจ้งชำระเงินค่าห้อง</title>
 
-  <!-- LINE LIFF SDK -->
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 
   <style>
@@ -46,7 +45,7 @@
       color: #333;
     }
 
-    select,
+    input[type="text"],
     input[type="file"] {
       width: 100%;
       padding: 12px;
@@ -107,6 +106,7 @@
       border-radius: 8px;
       cursor: pointer;
       transition: background 0.2s;
+      margin-top: 8px;
     }
 
     button:hover {
@@ -138,73 +138,109 @@
     .hidden {
       display: none !important;
     }
+
+    .login-message {
+      margin-top: 10px;
+      font-size: 14px;
+      text-align: center;
+      color: #555;
+    }
+
+    .student-confirm {
+      background: #e8f8ed;
+      border: 1px solid #b7e8c5;
+      border-radius: 10px;
+      padding: 14px;
+      margin-top: 14px;
+      line-height: 1.7;
+    }
+
+    .student-info {
+      text-align: center;
+      background: #f8fafc;
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 16px;
+      line-height: 1.7;
+    }
   </style>
 </head>
 
 <body>
-
 <div class="card">
 
   <h2>💸 แจ้งชำระเงินค่าห้อง</h2>
 
   <div id="loading">
-    กำลังโหลดข้อมูลรายชื่อ...
+    กำลังเชื่อมต่อ LINE...
   </div>
 
-  <form id="paymentForm" class="hidden">
+  <!-- ส่วนผูกบัญชีนักศึกษา -->
+  <section id="loginSection" class="hidden">
 
     <div class="form-group">
-      <label>เลือกชื่อของคุณ</label>
-
-      <select id="studentSelect" required>
-        <option value="">-- กรุณาเลือกชื่อ --</option>
-      </select>
-    </div>
-
-
-    <div class="form-group">
-      <label>เลือกรายการที่ต้องการจ่าย (ติ๊กได้มากกว่า 1)</label>
-
-      <div class="checkbox-container" id="itemsContainer">
-      </div>
-    </div>
-
-
-    <div class="total-box">
-      ยอดรวมทั้งสิ้น:
-      <span id="totalAmount">0</span>
-      บาท
-    </div>
-
-
-    <div class="form-group">
-      <label>แนบสลิปการโอนเงิน</label>
-
+      <label for="studentIdInput">กรอกรหัสนักศึกษา</label>
       <input
-        type="file"
-        id="slipInput"
-        accept="image/*"
-        required
-      >
-
-      <img
-        id="preview"
-        alt="ตัวอย่างสลิป"
+        type="text"
+        id="studentIdInput"
+        placeholder="กรอกรหัสนักศึกษาของคุณ"
+        inputmode="numeric"
+        autocomplete="off"
       >
     </div>
 
-
-    <button type="submit" id="submitBtn">
-      ยืนยันการส่งสลิป
+    <button type="button" id="lookupBtn">
+      ตรวจสอบรหัสนักศึกษา
     </button>
 
-  </form>
+    <div id="studentConfirm" class="student-confirm hidden"></div>
+
+    <button type="button" id="registerBtn" class="hidden">
+      ยืนยันผูกบัญชี LINE
+    </button>
+
+    <div id="loginMessage" class="login-message"></div>
+
+  </section>
+
+  <!-- ส่วนชำระเงิน -->
+  <section id="paymentSection" class="hidden">
+
+    <div id="loggedInStudent" class="student-info"></div>
+
+    <form id="paymentForm">
+
+      <div class="form-group">
+        <label>เลือกรายการที่ต้องการจ่าย (ติ๊กได้มากกว่า 1)</label>
+        <div class="checkbox-container" id="itemsContainer"></div>
+      </div>
+
+      <div class="total-box">
+        ยอดรวมทั้งสิ้น:
+        <span id="totalAmount">0</span>
+        บาท
+      </div>
+
+      <div class="form-group">
+        <label>แนบสลิปการโอนเงิน</label>
+        <input
+          type="file"
+          id="slipInput"
+          accept="image/*"
+          required
+        >
+        <img id="preview" alt="ตัวอย่างสลิป">
+      </div>
+
+      <button type="submit" id="submitBtn">
+        ยืนยันการส่งสลิป
+      </button>
+
+    </form>
+  </section>
 
 </div>
 
-
-<!-- โหลด JavaScript จากไฟล์ app.js เพียงไฟล์เดียว -->
-<script src="./app.js?v=2"></script>
-
+<script src="./app.js?v=3"></script>
 </body>
 </html>
