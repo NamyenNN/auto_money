@@ -1,7 +1,7 @@
 // === 1. ตั้งค่าการเชื่อมต่อ (แก้ไขข้อมูลของคุณตรงนี้) ===
 const CONFIG = {
   GAS_WEB_APP_URL: 'https://script.google.com/macros/s/AKfycby4GAoq5mkXVXWXvL4sd2eENyPUZ6XONYGzNQ3z3vXn_Ak2bJkWSW8NHKNdNnr5Quy5/exec',
-  LIFF_ID: 'ใส่_LIFF_ID_ของคุณ', // ปล่อยว่างไว้ได้ถ้ายังไม่ได้สร้าง LIFF
+  LIFF_ID: '2012645761-WmDBRWza', // ปล่อยว่างไว้ได้ถ้ายังไม่ได้สร้าง LIFF
   MAX_IMAGE_WIDTH: 800,           // ความกว้างสูงสุดของรูปสลิปหลังบีบอัด (px)
   IMAGE_QUALITY: 0.7              // คุณภาพไฟล์ JPEG (0.1 - 1.0)
 };
