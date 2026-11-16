@@ -3,16 +3,10 @@
  * AUTO MONEY - FRONTEND APPLICATION
  * Frontend: GitHub Pages
  * Backend: Google Apps Script
- * Login: LINE LIFF
+ * Login: LINE LIFF + Student ID Binding
  *
- * Features:
- * - LINE LIFF Login
- * - Dynamic Student Payment Items
- * - Payment Status: UNPAID / PENDING / APPROVED
- * - Dynamic PromptPay QR with Amount
- * - PromptPay Settings from Google Sheets
- * - Slip Upload and Compression
- * - LINE Admin Notification
+ * เปลี่ยนเฉพาะระบบเลือกนักศึกษาเป็นระบบผูก LINE
+ * ระบบ PromptPay / QR / Slip / Payment คงเดิม
  ****************************************************/
 
 
@@ -43,24 +37,25 @@ const CONFIG = {
 // ==================================================
 
 const STATE = {
+  idToken: '',
   lineUserId: 'GUEST',
+
+  studentId: '',
+  studentName: '',
+
+  lookupStudentId: '',
+  lookupStudentName: '',
 
   compressedBase64: '',
 
-  members: [],
-
   items: [],
-
   promptPay: null,
 
   isLiffReady: false,
-
   isSubmitting: false,
-
   isLoadingItems: false,
 
   itemRequestId: 0,
-
   qrRenderId: 0
 };
 
@@ -69,39 +64,33 @@ const STATE = {
 // 3. INITIALIZE APPLICATION
 // ==================================================
 
-window.addEventListener(
-  'DOMContentLoaded',
-  async function() {
-    try {
-      showLoading('กำลังเชื่อมต่อระบบ...');
+window.addEventListener('DOMContentLoaded', async function() {
+  setupEventListeners();
 
-      const liffReady = await initLiff();
+  ensurePromptPaySection();
 
-      if (liffReady === 'redirect') {
-        return;
-      }
+  try {
+    showLoading('กำลังเชื่อมต่อ LINE...');
 
-      await loadAppData();
+    const liffReady = await initLiff();
 
-      setupEventListeners();
+    if (liffReady === 'redirect') {
+      return;
+    }
 
-      ensurePromptPaySection();
-
-      calculateTotal();
-
-    } catch (error) {
-      console.error(
-        'Application Init Error:',
-        error
-      );
-
-      showError(
-        'เกิดข้อผิดพลาด: ' +
-        (error.message || error)
+    if (!liffReady) {
+      throw new Error(
+        'ไม่สามารถเชื่อมต่อ LINE ได้ กรุณาเปิดผ่าน LINE อีกครั้ง'
       );
     }
+
+    await checkLinkedAccount();
+
+  } catch (error) {
+    console.error('Application Init Error:', error);
+    showError(error.message || error);
   }
-);
+});
 
 
 // ==================================================
@@ -112,9 +101,7 @@ function showLoading(message) {
   const loadingEl = document.getElementById('loading');
 
   if (loadingEl) {
-    loadingEl.textContent =
-      message || 'กำลังโหลดข้อมูล...';
-
+    loadingEl.textContent = message || 'กำลังโหลดข้อมูล...';
     loadingEl.classList.remove('hidden');
   }
 }
@@ -131,16 +118,27 @@ function hideLoading() {
 
 function showError(message) {
   const loadingEl = document.getElementById('loading');
-  const formEl = document.getElementById('paymentForm');
 
   if (loadingEl) {
     loadingEl.textContent = '⚠️ ' + message;
     loadingEl.classList.remove('hidden');
   }
+}
 
-  if (formEl) {
-    formEl.classList.add('hidden');
-  }
+
+function showLoginSection() {
+  hideLoading();
+
+  document.getElementById('loginSection')?.classList.remove('hidden');
+  document.getElementById('paymentSection')?.classList.add('hidden');
+}
+
+
+function showPaymentSection() {
+  hideLoading();
+
+  document.getElementById('loginSection')?.classList.add('hidden');
+  document.getElementById('paymentSection')?.classList.remove('hidden');
 }
 
 
@@ -149,17 +147,8 @@ function showError(message) {
 // ==================================================
 
 async function initLiff() {
-  if (
-    !CONFIG.LIFF_ID ||
-    typeof liff === 'undefined'
-  ) {
-    console.warn(
-      'LIFF SDK unavailable; continuing as guest'
-    );
-
-    STATE.lineUserId = 'GUEST';
-
-    return false;
+  if (!CONFIG.LIFF_ID || typeof liff === 'undefined') {
+    throw new Error('ไม่พบ LINE LIFF SDK');
   }
 
   try {
@@ -172,27 +161,34 @@ async function initLiff() {
       return 'redirect';
     }
 
-    const profile = await liff.getProfile();
+    STATE.idToken = liff.getIDToken();
 
-    if (profile && profile.userId) {
-      STATE.lineUserId = profile.userId;
+    if (!STATE.idToken) {
+      throw new Error(
+        'ไม่พบ ID Token กรุณาตรวจสอบ LIFF Scope ว่าเปิด openid แล้ว'
+      );
     }
 
     STATE.isLiffReady = true;
 
-    console.log(
-      'LIFF Connected:',
-      STATE.lineUserId
-    );
+    // ใช้เพื่อแสดงข้อมูลเท่านั้น ไม่ใช้เป็นหลักฐานยืนยันตัวตน
+    try {
+      const profile = await liff.getProfile();
+
+      if (profile && profile.userId) {
+        STATE.lineUserId = profile.userId;
+      }
+    } catch (profileError) {
+      console.warn('ไม่สามารถโหลด LINE Profile ได้', profileError);
+    }
+
+    console.log('LIFF Connected');
 
     return true;
 
   } catch (error) {
     console.error('LIFF Init Error:', error);
-
-    STATE.lineUserId = 'GUEST';
-
-    return false;
+    throw error;
   }
 }
 
@@ -205,7 +201,9 @@ function buildGasUrl(params) {
   const url = new URL(CONFIG.GAS_WEB_APP_URL);
 
   Object.keys(params || {}).forEach(function(key) {
-    url.searchParams.set(key, params[key]);
+    if (params[key] !== undefined && params[key] !== null) {
+      url.searchParams.set(key, params[key]);
+    }
   });
 
   url.searchParams.set('_ts', Date.now());
@@ -215,13 +213,24 @@ function buildGasUrl(params) {
 
 
 async function fetchJson(url, options) {
-  const response = await fetch(
-    url,
-    options || {
-      method: 'GET',
-      redirect: 'follow'
-    }
-  );
+  const controller = new AbortController();
+
+  const timeout = setTimeout(function() {
+    controller.abort();
+  }, CONFIG.REQUEST_TIMEOUT);
+
+  let response;
+
+  try {
+    response = await fetch(url, {
+      ...(options || {}),
+      redirect: 'follow',
+      signal: controller.signal
+    });
+
+  } finally {
+    clearTimeout(timeout);
+  }
 
   const responseText = await response.text();
 
@@ -242,9 +251,7 @@ async function fetchJson(url, options) {
   }
 
   if (!response.ok) {
-    throw new Error(
-      'HTTP Error: ' + response.status
-    );
+    throw new Error('HTTP Error: ' + response.status);
   }
 
   if (!data || data.status === 'error') {
@@ -258,162 +265,254 @@ async function fetchJson(url, options) {
 }
 
 
-// ==================================================
-// 7. LOAD MEMBERS AND PROMPTPAY SETTINGS
-// ==================================================
+async function apiGet(params) {
+  return fetchJson(buildGasUrl({
+    ...params,
+    idToken: STATE.idToken
+  }));
+}
 
-async function loadAppData() {
-  showLoading('กำลังโหลดรายชื่อสมาชิก...');
 
-  const formEl = document.getElementById('paymentForm');
+async function apiPost(payload) {
+  return fetchJson(CONFIG.GAS_WEB_APP_URL, {
+    method: 'POST',
 
-  const data = await fetchJson(
-    buildGasUrl({})
-  );
+    headers: {
+      'Content-Type': 'text/plain;charset=utf-8'
+    },
 
-  if (data.status !== 'success') {
-    throw new Error(
-      data.message || 'ไม่สามารถโหลดข้อมูลสมาชิกได้'
-    );
-  }
-
-  if (!Array.isArray(data.members)) {
-    throw new Error('ไม่พบข้อมูลสมาชิกในระบบ');
-  }
-
-  STATE.members = data.members;
-
-  STATE.promptPay = data.promptPay || null;
-
-  STATE.items = [];
-
-  renderMembersDropdown(STATE.members);
-
-  renderItemsCheckboxes([]);
-
-  ensurePromptPaySection();
-
-  hideLoading();
-
-  if (formEl) {
-    formEl.classList.remove('hidden');
-  }
-
-  const studentSelect = document.getElementById(
-    'studentSelect'
-  );
-
-  if (
-    studentSelect &&
-    studentSelect.value
-  ) {
-    await loadItemsForStudent(studentSelect.value);
-  }
-
-  console.log(
-    'Members Loaded:',
-    STATE.members.length
-  );
-
-  console.log(
-    'PromptPay Settings Loaded:',
-    !!STATE.promptPay
-  );
+    body: JSON.stringify({
+      ...payload,
+      idToken: STATE.idToken
+    })
+  });
 }
 
 
 // ==================================================
-// 8. RENDER MEMBERS DROPDOWN
+// 7. CHECK LINKED ACCOUNT
 // ==================================================
 
-function renderMembersDropdown(members) {
-  const select = document.getElementById(
-    'studentSelect'
-  );
+async function checkLinkedAccount() {
+  showLoading('กำลังตรวจสอบบัญชี LINE...');
 
-  if (!select) {
-    throw new Error(
-      'ไม่พบ studentSelect ใน HTML'
-    );
-  }
-
-  select.innerHTML = '';
-
-  const defaultOption = document.createElement('option');
-
-  defaultOption.value = '';
-  defaultOption.textContent = '-- เลือกรหัสนักศึกษา --';
-  defaultOption.disabled = true;
-  defaultOption.selected = true;
-
-  select.appendChild(defaultOption);
-
-  let matchedStudentId = '';
-
-  members.forEach(function(member) {
-    const option = document.createElement('option');
-
-    option.value = member.studentId;
-    option.dataset.name = member.name;
-
-    option.textContent =
-      member.studentId +
-      ' - ' +
-      member.name;
-
-    if (
-      member.lineUserId &&
-      STATE.lineUserId !== 'GUEST' &&
-      member.lineUserId === STATE.lineUserId
-    ) {
-      matchedStudentId = member.studentId;
-    }
-
-    select.appendChild(option);
+  const data = await apiGet({
+    action: 'me'
   });
 
-  if (matchedStudentId) {
-    select.value = matchedStudentId;
+  if (data.status !== 'success') {
+    throw new Error(data.message || 'ตรวจสอบบัญชีไม่สำเร็จ');
+  }
 
-    console.log(
-      'Matched LINE User with Member'
+  // รองรับข้อมูลนักศึกษาทั้งแบบ data.student และแบบ data ชั้นบน
+  const student = data.student || data.member || data;
+
+  const linked =
+    data.linked === true ||
+    data.isLinked === true ||
+    !!(student && student.studentId && student.name);
+
+  if (!linked) {
+    STATE.studentId = '';
+    STATE.studentName = '';
+
+    showLoginSection();
+    return;
+  }
+
+  STATE.studentId = String(student.studentId || '');
+  STATE.studentName = String(student.name || '');
+
+  if (!STATE.studentId) {
+    showLoginSection();
+    return;
+  }
+
+  showPaymentSection();
+
+  const loggedInStudent = document.getElementById('loggedInStudent');
+
+  if (loggedInStudent) {
+    loggedInStudent.textContent =
+      '👤 ' + STATE.studentName +
+      ' (' + STATE.studentId + ')';
+  }
+
+  await loadItemsForStudent();
+}
+
+
+// ==================================================
+// 8. LOOKUP STUDENT ID
+// ==================================================
+
+async function handleStudentLookup() {
+  const input = document.getElementById('studentIdInput');
+  const confirmBox = document.getElementById('studentConfirm');
+  const lookupBtn = document.getElementById('lookupBtn');
+  const registerBtn = document.getElementById('registerBtn');
+  const message = document.getElementById('loginMessage');
+
+  const studentId = input ? input.value.trim() : '';
+
+  if (!studentId) {
+    if (message) message.textContent = 'กรุณากรอกรหัสนักศึกษา';
+    return;
+  }
+
+  STATE.lookupStudentId = '';
+  STATE.lookupStudentName = '';
+
+  confirmBox?.classList.add('hidden');
+  registerBtn?.classList.add('hidden');
+
+  if (message) message.textContent = '';
+
+  if (lookupBtn) {
+    lookupBtn.disabled = true;
+    lookupBtn.textContent = 'กำลังตรวจสอบ...';
+  }
+
+  try {
+    const data = await apiGet({
+      action: 'lookup_student',
+      studentId: studentId
+    });
+
+    if (data.status !== 'success') {
+      throw new Error(data.message || 'ไม่พบข้อมูลนักศึกษา');
+    }
+
+    const student = data.student || data.member || data;
+
+    const returnedStudentId = String(
+      student.studentId || student.id || studentId
     );
+
+    const returnedName = String(
+      student.name || student.studentName || ''
+    );
+
+    if (!returnedName) {
+      throw new Error('ไม่พบชื่อนักศึกษาในระบบ');
+    }
+
+    STATE.lookupStudentId = returnedStudentId;
+    STATE.lookupStudentName = returnedName;
+
+    if (confirmBox) {
+      confirmBox.textContent =
+        'ตรวจสอบข้อมูลนักศึกษา\n' +
+        'รหัสนักศึกษา: ' + returnedStudentId + '\n' +
+        'ชื่อ: ' + returnedName +
+        '\n\nกรุณาตรวจสอบว่าข้อมูลถูกต้องก่อนยืนยัน';
+
+      confirmBox.classList.remove('hidden');
+    }
+
+    registerBtn?.classList.remove('hidden');
+
+    if (message) {
+      message.textContent = 'พบข้อมูลนักศึกษาแล้ว';
+      message.style.color = '#16a34a';
+    }
+
+  } catch (error) {
+    console.error('Student Lookup Error:', error);
+
+    if (message) {
+      message.textContent = '⚠️ ' + error.message;
+      message.style.color = '#dc2626';
+    }
+
+  } finally {
+    if (lookupBtn) {
+      lookupBtn.disabled = false;
+      lookupBtn.textContent = 'ตรวจสอบรหัสนักศึกษา';
+    }
   }
 }
 
 
 // ==================================================
-// 9. LOAD ITEMS FOR SELECTED STUDENT
+// 9. REGISTER LINE ACCOUNT
 // ==================================================
 
-async function loadItemsForStudent(studentId) {
-  const container = document.getElementById(
-    'itemsContainer'
-  );
+async function handleRegisterLine() {
+  const registerBtn = document.getElementById('registerBtn');
+  const message = document.getElementById('loginMessage');
 
-  const requestId = ++STATE.itemRequestId;
-
-  if (!studentId) {
-    STATE.items = [];
-
-    renderItemsCheckboxes([]);
-
+  if (!STATE.lookupStudentId) {
+    if (message) message.textContent = 'กรุณาตรวจสอบรหัสนักศึกษาก่อน';
     return;
   }
+
+  if (!STATE.idToken) {
+    if (message) message.textContent = 'ไม่พบ LINE ID Token กรุณาเปิด LIFF ใหม่';
+    return;
+  }
+
+  if (registerBtn) {
+    registerBtn.disabled = true;
+    registerBtn.textContent = 'กำลังผูกบัญชี...';
+  }
+
+  try {
+    const result = await apiPost({
+      action: 'register_line',
+      studentId: STATE.lookupStudentId
+    });
+
+    if (result.status !== 'success') {
+      throw new Error(result.message || 'ไม่สามารถผูกบัญชีได้');
+    }
+
+    if (message) {
+      message.textContent = 'ผูกบัญชีสำเร็จ กำลังเข้าสู่ระบบ...';
+      message.style.color = '#16a34a';
+    }
+
+    STATE.studentId = STATE.lookupStudentId;
+    STATE.studentName = STATE.lookupStudentName;
+
+    await checkLinkedAccount();
+
+  } catch (error) {
+    console.error('Register LINE Error:', error);
+
+    if (message) {
+      message.textContent = '⚠️ ' + error.message;
+      message.style.color = '#dc2626';
+    }
+
+  } finally {
+    if (registerBtn) {
+      registerBtn.disabled = false;
+      registerBtn.textContent = 'ยืนยันผูกบัญชี LINE';
+    }
+  }
+}
+
+
+// ==================================================
+// 10. LOAD ITEMS FOR LINKED STUDENT
+// ==================================================
+
+async function loadItemsForStudent() {
+  const container = document.getElementById('itemsContainer');
+
+  const requestId = ++STATE.itemRequestId;
 
   STATE.isLoadingItems = true;
 
   if (container) {
-    container.innerHTML =
-      '<p>กำลังโหลดรายการชำระเงิน...</p>';
+    container.innerHTML = '<p>กำลังโหลดรายการชำระเงิน...</p>';
   }
 
   try {
-    const data = await fetchJson(
-      buildGasUrl({
-        studentId: studentId
-      })
-    );
+    const data = await apiGet({
+      action: 'payment_items'
+    });
 
     if (requestId !== STATE.itemRequestId) {
       return;
@@ -424,8 +523,7 @@ async function loadItemsForStudent(studentId) {
       !Array.isArray(data.items)
     ) {
       throw new Error(
-        data.message ||
-        'ไม่สามารถโหลดรายการของนักศึกษาได้'
+        data.message || 'ไม่สามารถโหลดรายการชำระเงินได้'
       );
     }
 
@@ -435,12 +533,15 @@ async function loadItemsForStudent(studentId) {
       STATE.promptPay = data.promptPay;
     }
 
+    // เผื่อ backend ส่งข้อมูลนักศึกษามาพร้อมรายการ
+    if (data.student) {
+      STATE.studentId = data.student.studentId || STATE.studentId;
+      STATE.studentName = data.student.name || STATE.studentName;
+    }
+
     renderItemsCheckboxes(STATE.items);
 
-    if (
-      STATE.items.length === 0 &&
-      container
-    ) {
+    if (STATE.items.length === 0 && container) {
       container.innerHTML =
         '<p>ไม่มีรายการที่ต้องชำระในขณะนี้ หรือชำระครบแล้ว</p>';
     }
@@ -450,24 +551,18 @@ async function loadItemsForStudent(studentId) {
       return;
     }
 
-    console.error(
-      'Load Student Items Error:',
-      error
-    );
+    console.error('Load Student Items Error:', error);
 
     STATE.items = [];
-
     renderItemsCheckboxes([]);
 
     if (container) {
-      container.textContent =
-        '⚠️ ' + error.message;
+      container.textContent = '⚠️ ' + error.message;
     }
 
   } finally {
     if (requestId === STATE.itemRequestId) {
       STATE.isLoadingItems = false;
-
       calculateTotal();
     }
   }
@@ -475,18 +570,14 @@ async function loadItemsForStudent(studentId) {
 
 
 // ==================================================
-// 10. RENDER PAYMENT ITEMS WITH STATUS
+// 11. RENDER PAYMENT ITEMS WITH STATUS
 // ==================================================
 
 function renderItemsCheckboxes(items) {
-  const container = document.getElementById(
-    'itemsContainer'
-  );
+  const container = document.getElementById('itemsContainer');
 
   if (!container) {
-    throw new Error(
-      'ไม่พบ itemsContainer ใน HTML'
-    );
+    throw new Error('ไม่พบ itemsContainer ใน HTML');
   }
 
   container.innerHTML = '';
@@ -494,23 +585,18 @@ function renderItemsCheckboxes(items) {
   if (!items || items.length === 0) {
     const message = document.createElement('p');
 
-    message.textContent =
-      'กรุณาเลือกรหัสนักศึกษาเพื่อดูรายการชำระเงิน';
+    message.textContent = 'ไม่มีรายการชำระเงินในขณะนี้';
 
     container.appendChild(message);
 
     calculateTotal();
-
     return;
   }
 
   items.forEach(function(item) {
     const price = Number(item.amount);
 
-    if (
-      !Number.isFinite(price) ||
-      price <= 0
-    ) {
+    if (!Number.isFinite(price) || price <= 0) {
       return;
     }
 
@@ -539,7 +625,6 @@ function renderItemsCheckboxes(items) {
       div.style.opacity = '0.85';
     }
 
-    // Checkbox
     const checkbox = document.createElement('input');
 
     checkbox.type = 'checkbox';
@@ -549,10 +634,8 @@ function renderItemsCheckboxes(items) {
     checkbox.dataset.title = item.title;
     checkbox.dataset.amount = String(price);
 
-    // ปิดการเลือกถ้าจ่ายแล้วหรือรอตรวจสอบ
     checkbox.disabled = !canPay;
 
-    // Label
     const label = document.createElement('label');
 
     label.htmlFor = item.id;
@@ -563,7 +646,6 @@ function renderItemsCheckboxes(items) {
       price.toLocaleString('en-US') +
       ' บาท';
 
-    // Status
     const statusElement = document.createElement('span');
 
     statusElement.className = 'payment-status';
@@ -586,7 +668,6 @@ function renderItemsCheckboxes(items) {
     statusElement.style.fontWeight = '600';
     statusElement.style.marginTop = '5px';
 
-    // เพิ่มองค์ประกอบ
     div.appendChild(checkbox);
     div.appendChild(label);
     div.appendChild(statusElement);
@@ -599,7 +680,7 @@ function renderItemsCheckboxes(items) {
 
 
 // ==================================================
-// 11. PROMPTPAY QR - CRC16
+// 12. PROMPTPAY QR - CRC16
 // ==================================================
 
 function crc16(data) {
@@ -617,15 +698,12 @@ function crc16(data) {
     }
   }
 
-  return crc
-    .toString(16)
-    .toUpperCase()
-    .padStart(4, '0');
+  return crc.toString(16).toUpperCase().padStart(4, '0');
 }
 
 
 // ==================================================
-// 12. PROMPTPAY QR - TLV HELPER
+// 13. PROMPTPAY QR - TLV HELPER
 // ==================================================
 
 function makeTLV(tag, value) {
@@ -635,39 +713,26 @@ function makeTLV(tag, value) {
     throw new Error('ข้อมูล QR ยาวเกินกำหนด');
   }
 
-  return (
-    tag +
-    String(text.length).padStart(2, '0') +
-    text
-  );
+  return tag + String(text.length).padStart(2, '0') + text;
 }
 
 
 // ==================================================
-// 13. GENERATE PROMPTPAY PAYLOAD
+// 14. GENERATE PROMPTPAY PAYLOAD
 // ==================================================
 
 function generatePromptPayPayload(target, amount) {
-  const sanitized = String(target || '')
-    .replace(/\D/g, '');
+  const sanitized = String(target || '').replace(/\D/g, '');
 
   let targetType = '';
   let formattedTarget = '';
 
-  // PromptPay Mobile
-  if (
-    sanitized.length === 10 &&
-    sanitized.startsWith('0')
-  ) {
+  if (sanitized.length === 10 && sanitized.startsWith('0')) {
     targetType = '01';
+    formattedTarget = '0066' + sanitized.substring(1);
 
-    formattedTarget =
-      '0066' + sanitized.substring(1);
-
-  // Thai Citizen ID / Tax ID
   } else if (sanitized.length === 13) {
     targetType = '02';
-
     formattedTarget = sanitized;
 
   } else {
@@ -678,10 +743,7 @@ function generatePromptPayPayload(target, amount) {
 
   const paymentAmount = Number(amount);
 
-  if (
-    !Number.isFinite(paymentAmount) ||
-    paymentAmount <= 0
-  ) {
+  if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) {
     throw new Error('ยอดเงินไม่ถูกต้อง');
   }
 
@@ -702,7 +764,6 @@ function generatePromptPayPayload(target, amount) {
     '5802TH';
 
   payload += '6304';
-
   payload += crc16(payload);
 
   return payload;
@@ -710,7 +771,7 @@ function generatePromptPayPayload(target, amount) {
 
 
 // ==================================================
-// 14. LOAD QR CODE LIBRARY
+// 15. LOAD QR CODE LIBRARY
 // ==================================================
 
 function loadQRCodeLibrary() {
@@ -725,25 +786,17 @@ function loadQRCodeLibrary() {
     );
 
     if (existingScript) {
-      existingScript.addEventListener(
-        'load',
-        function() {
-          if (typeof QRCode !== 'undefined') {
-            resolve();
-          } else {
-            reject(new Error('โหลด QR Code Library ไม่สำเร็จ'));
-          }
-        },
-        { once: true }
-      );
+      existingScript.addEventListener('load', function() {
+        if (typeof QRCode !== 'undefined') {
+          resolve();
+        } else {
+          reject(new Error('โหลด QR Code Library ไม่สำเร็จ'));
+        }
+      }, { once: true });
 
-      existingScript.addEventListener(
-        'error',
-        function() {
-          reject(new Error('ไม่สามารถโหลด QR Code Library ได้'));
-        },
-        { once: true }
-      );
+      existingScript.addEventListener('error', function() {
+        reject(new Error('ไม่สามารถโหลด QR Code Library ได้'));
+      }, { once: true });
 
       return;
     }
@@ -763,9 +816,7 @@ function loadQRCodeLibrary() {
     };
 
     script.onerror = function() {
-      reject(
-        new Error('ไม่สามารถเชื่อมต่อ QR Code Library ได้')
-      );
+      reject(new Error('ไม่สามารถเชื่อมต่อ QR Code Library ได้'));
     };
 
     document.head.appendChild(script);
@@ -774,21 +825,17 @@ function loadQRCodeLibrary() {
 
 
 // ==================================================
-// 15. CREATE PROMPTPAY SECTION
+// 16. CREATE PROMPTPAY SECTION
 // ==================================================
 
 function ensurePromptPaySection() {
-  let section = document.getElementById(
-    'promptPaySection'
-  );
+  let section = document.getElementById('promptPaySection');
 
   if (section) {
     return section;
   }
 
-  const itemsContainer = document.getElementById(
-    'itemsContainer'
-  );
+  const itemsContainer = document.getElementById('itemsContainer');
 
   if (!itemsContainer) {
     return null;
@@ -819,9 +866,7 @@ function ensurePromptPaySection() {
   const description = document.createElement('p');
 
   description.id = 'promptPayDescription';
-
-  description.textContent =
-    'สแกน QR Code เพื่อชำระเงิน';
+  description.textContent = 'สแกน QR Code เพื่อชำระเงิน';
 
   description.style.fontSize = '13px';
   description.style.color = '#6b7280';
@@ -830,7 +875,6 @@ function ensurePromptPaySection() {
   const qrContainer = document.createElement('div');
 
   qrContainer.id = 'promptPayQRCode';
-
   qrContainer.style.width = CONFIG.QR_SIZE + 'px';
   qrContainer.style.minHeight = CONFIG.QR_SIZE + 'px';
   qrContainer.style.maxWidth = '100%';
@@ -842,7 +886,6 @@ function ensurePromptPaySection() {
   const accountName = document.createElement('div');
 
   accountName.id = 'promptPayAccountName';
-
   accountName.style.fontSize = '15px';
   accountName.style.fontWeight = '700';
   accountName.style.color = '#111827';
@@ -851,7 +894,6 @@ function ensurePromptPaySection() {
   const amountText = document.createElement('div');
 
   amountText.id = 'promptPayAmount';
-
   amountText.style.fontSize = '28px';
   amountText.style.fontWeight = '800';
   amountText.style.color = '#16a34a';
@@ -860,9 +902,7 @@ function ensurePromptPaySection() {
   const note = document.createElement('p');
 
   note.id = 'promptPayNote';
-
-  note.textContent =
-    'กรุณาตรวจสอบชื่อบัญชีและยอดเงินก่อนชำระ';
+  note.textContent = 'กรุณาตรวจสอบชื่อบัญชีและยอดเงินก่อนชำระ';
 
   note.style.fontSize = '12px';
   note.style.color = '#6b7280';
@@ -875,54 +915,33 @@ function ensurePromptPaySection() {
   section.appendChild(amountText);
   section.appendChild(note);
 
-  itemsContainer.insertAdjacentElement(
-    'afterend',
-    section
-  );
+  itemsContainer.insertAdjacentElement('afterend', section);
 
   return section;
 }
 
 
 // ==================================================
-// 16. RENDER PROMPTPAY QR
+// 17. RENDER PROMPTPAY QR
 // ==================================================
 
 async function renderPromptPayQR(amount) {
   const section = ensurePromptPaySection();
 
-  if (!section) {
-    return;
-  }
+  if (!section) return;
 
-  const qrContainer = document.getElementById(
-    'promptPayQRCode'
-  );
-
-  const accountName = document.getElementById(
-    'promptPayAccountName'
-  );
-
-  const amountText = document.getElementById(
-    'promptPayAmount'
-  );
-
-  const description = document.getElementById(
-    'promptPayDescription'
-  );
-
-  const note = document.getElementById(
-    'promptPayNote'
-  );
+  const qrContainer = document.getElementById('promptPayQRCode');
+  const accountName = document.getElementById('promptPayAccountName');
+  const amountText = document.getElementById('promptPayAmount');
+  const description = document.getElementById('promptPayDescription');
+  const note = document.getElementById('promptPayNote');
 
   const renderId = ++STATE.qrRenderId;
 
   if (!Number.isFinite(amount) || amount <= 0) {
     section.style.display = 'none';
 
-    if (qrContainer) {
-      qrContainer.innerHTML = '';
-    }
+    if (qrContainer) qrContainer.innerHTML = '';
 
     return;
   }
@@ -969,14 +988,11 @@ async function renderPromptPayQR(amount) {
     }
 
     qrContainer.innerHTML = '';
-
     qrContainer.textContent = 'กำลังสร้าง QR Code...';
 
     await loadQRCodeLibrary();
 
-    if (renderId !== STATE.qrRenderId) {
-      return;
-    }
+    if (renderId !== STATE.qrRenderId) return;
 
     qrContainer.innerHTML = '';
 
@@ -989,23 +1005,14 @@ async function renderPromptPayQR(amount) {
       correctLevel: QRCode.CorrectLevel.M
     });
 
-    console.log(
-      'PromptPay QR Generated:',
-      amount
-    );
+    console.log('PromptPay QR Generated:', amount);
 
   } catch (error) {
-    if (renderId !== STATE.qrRenderId) {
-      return;
-    }
+    if (renderId !== STATE.qrRenderId) return;
 
-    console.error(
-      'PromptPay QR Error:',
-      error
-    );
+    console.error('PromptPay QR Error:', error);
 
-    qrContainer.textContent =
-      '⚠️ ' + error.message;
+    qrContainer.textContent = '⚠️ ' + error.message;
 
     if (description) {
       description.textContent =
@@ -1016,7 +1023,7 @@ async function renderPromptPayQR(amount) {
 
 
 // ==================================================
-// 17. CALCULATE TOTAL AMOUNT
+// 18. CALCULATE TOTAL AMOUNT
 // ==================================================
 
 function calculateTotal() {
@@ -1032,9 +1039,7 @@ function calculateTotal() {
 
   total = Number(total.toFixed(2));
 
-  const totalElement = document.getElementById(
-    'totalAmount'
-  );
+  const totalElement = document.getElementById('totalAmount');
 
   if (totalElement) {
     totalElement.textContent =
@@ -1051,75 +1056,57 @@ function calculateTotal() {
 
 
 // ==================================================
-// 18. SETUP EVENT LISTENERS
+// 19. SETUP EVENT LISTENERS
 // ==================================================
 
 function setupEventListeners() {
-  const itemsContainer = document.getElementById(
-    'itemsContainer'
-  );
+  const itemsContainer = document.getElementById('itemsContainer');
+  const slipInput = document.getElementById('slipInput');
+  const paymentForm = document.getElementById('paymentForm');
 
-  const slipInput = document.getElementById(
-    'slipInput'
-  );
+  const lookupBtn = document.getElementById('lookupBtn');
+  const registerBtn = document.getElementById('registerBtn');
+  const studentIdInput = document.getElementById('studentIdInput');
 
-  const paymentForm = document.getElementById(
-    'paymentForm'
-  );
+  if (lookupBtn) {
+    lookupBtn.addEventListener('click', handleStudentLookup);
+  }
 
-  const studentSelect = document.getElementById(
-    'studentSelect'
-  );
+  if (registerBtn) {
+    registerBtn.addEventListener('click', handleRegisterLine);
+  }
 
-  if (studentSelect) {
-    studentSelect.addEventListener(
-      'change',
-      function() {
-        STATE.compressedBase64 = '';
-
-        const preview = document.getElementById(
-          'preview'
-        );
-
-        if (preview) {
-          preview.src = '';
-          preview.classList.add('hidden');
-        }
-
-        if (slipInput) {
-          slipInput.value = '';
-        }
-
-        STATE.items = [];
-
-        renderItemsCheckboxes([]);
-
-        loadItemsForStudent(
-          studentSelect.value
-        );
+  if (studentIdInput) {
+    studentIdInput.addEventListener('keydown', function(event) {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        handleStudentLookup();
       }
-    );
+    });
+
+    studentIdInput.addEventListener('input', function() {
+      STATE.lookupStudentId = '';
+      STATE.lookupStudentName = '';
+
+      document.getElementById('studentConfirm')?.classList.add('hidden');
+      document.getElementById('registerBtn')?.classList.add('hidden');
+
+      const message = document.getElementById('loginMessage');
+
+      if (message) message.textContent = '';
+    });
   }
 
   if (itemsContainer) {
-    itemsContainer.addEventListener(
-      'change',
-      calculateTotal
-    );
+    itemsContainer.addEventListener('change', calculateTotal);
   }
 
   if (slipInput) {
-    slipInput.addEventListener(
-      'change',
-      handleImageUpload
-    );
+    slipInput.addEventListener('change', handleImageUpload);
   }
 
   if (paymentForm) {
-    paymentForm.addEventListener(
-      'submit',
-      handleFormSubmit
-    );
+    paymentForm.addEventListener('submit', handleFormSubmit);
   }
 
   console.log('Event Listeners Ready');
@@ -1127,7 +1114,7 @@ function setupEventListeners() {
 
 
 // ==================================================
-// 19. HANDLE IMAGE UPLOAD
+// 20. HANDLE IMAGE UPLOAD
 // ==================================================
 
 function handleImageUpload(event) {
@@ -1142,7 +1129,6 @@ function handleImageUpload(event) {
     alert('กรุณาเลือกไฟล์รูปภาพเท่านั้น');
 
     event.target.value = '';
-
     STATE.compressedBase64 = '';
 
     return;
@@ -1161,11 +1147,9 @@ function handleImageUpload(event) {
         let height = img.height;
 
         if (width > CONFIG.MAX_IMAGE_WIDTH) {
-          const ratio =
-            CONFIG.MAX_IMAGE_WIDTH / width;
+          const ratio = CONFIG.MAX_IMAGE_WIDTH / width;
 
           width = CONFIG.MAX_IMAGE_WIDTH;
-
           height = Math.round(height * ratio);
         }
 
@@ -1175,57 +1159,37 @@ function handleImageUpload(event) {
         const ctx = canvas.getContext('2d');
 
         if (!ctx) {
-          throw new Error(
-            'ไม่สามารถประมวลผลรูปภาพได้'
-          );
+          throw new Error('ไม่สามารถประมวลผลรูปภาพได้');
         }
 
-        ctx.drawImage(
-          img,
-          0,
-          0,
-          width,
-          height
-        );
+        ctx.drawImage(img, 0, 0, width, height);
 
         STATE.compressedBase64 = canvas.toDataURL(
           'image/jpeg',
           CONFIG.IMAGE_QUALITY
         );
 
-        const preview = document.getElementById(
-          'preview'
-        );
+        const preview = document.getElementById('preview');
 
         if (preview) {
           preview.src = STATE.compressedBase64;
-
+          preview.style.display = 'block';
           preview.classList.remove('hidden');
         }
 
-        console.log(
-          'Image Compressed Successfully'
-        );
+        console.log('Image Compressed Successfully');
 
       } catch (error) {
-        console.error(
-          'Image Compression Error:',
-          error
-        );
+        console.error('Image Compression Error:', error);
 
-        alert(
-          'ไม่สามารถบีบอัดรูปภาพได้ กรุณาลองใหม่'
-        );
+        alert('ไม่สามารถบีบอัดรูปภาพได้ กรุณาลองใหม่');
 
         STATE.compressedBase64 = '';
       }
     };
 
     img.onerror = function() {
-      alert(
-        'ไม่สามารถอ่านรูปภาพได้ กรุณาเลือกรูปใหม่'
-      );
-
+      alert('ไม่สามารถอ่านรูปภาพได้ กรุณาเลือกรูปใหม่');
       STATE.compressedBase64 = '';
     };
 
@@ -1234,7 +1198,6 @@ function handleImageUpload(event) {
 
   reader.onerror = function() {
     alert('ไม่สามารถอ่านไฟล์ได้');
-
     STATE.compressedBase64 = '';
   };
 
@@ -1243,18 +1206,26 @@ function handleImageUpload(event) {
 
 
 // ==================================================
-// 20. HANDLE PAYMENT FORM SUBMISSION
+// 21. HANDLE PAYMENT FORM SUBMISSION
 // ==================================================
 
 async function handleFormSubmit(event) {
   event.preventDefault();
 
-  if (STATE.isSubmitting) {
-    return;
-  }
+  if (STATE.isSubmitting) return;
 
   if (STATE.isLoadingItems) {
     alert('กรุณารอโหลดรายการชำระเงินให้เสร็จก่อน');
+    return;
+  }
+
+  if (!STATE.studentId) {
+    alert('ไม่พบข้อมูลบัญชีนักศึกษา กรุณาเข้าสู่ระบบใหม่');
+    return;
+  }
+
+  if (!STATE.idToken) {
+    alert('ไม่พบ LINE ID Token กรุณาเปิด LIFF ใหม่');
     return;
   }
 
@@ -1263,35 +1234,12 @@ async function handleFormSubmit(event) {
     return;
   }
 
-  const select = document.getElementById(
-    'studentSelect'
-  );
-
-  if (!select || !select.value) {
-    alert('กรุณาเลือกรหัสนักศึกษา');
-    return;
-  }
-
-  const selectedOption =
-    select.options[select.selectedIndex];
-
-  const studentId = select.value;
-  const name = selectedOption.dataset.name;
-
-  if (!name) {
-    alert('ไม่พบข้อมูลชื่อสมาชิก');
-    return;
-  }
-
   const checkedBoxes = document.querySelectorAll(
     '#itemsContainer input[type="checkbox"]:checked'
   );
 
   if (checkedBoxes.length === 0) {
-    alert(
-      'กรุณาเลือกอย่างน้อย 1 รายการที่ต้องการชำระ'
-    );
-
+    alert('กรุณาเลือกอย่างน้อย 1 รายการที่ต้องการชำระ');
     return;
   }
 
@@ -1304,7 +1252,6 @@ async function handleFormSubmit(event) {
     });
   });
 
-  // ตรวจสอบสถานะจากข้อมูลที่โหลดไว้ก่อนส่ง
   const invalidSelection = selectedItems.find(function(selected) {
     const item = STATE.items.find(function(current) {
       return current.id === selected.id;
@@ -1321,7 +1268,7 @@ async function handleFormSubmit(event) {
       'มีรายการที่กำลังรอตรวจสอบหรือชำระแล้ว กรุณาโหลดรายการใหม่'
     );
 
-    await loadItemsForStudent(studentId);
+    await loadItemsForStudent();
     return;
   }
 
@@ -1337,9 +1284,7 @@ async function handleFormSubmit(event) {
     return;
   }
 
-  const btn = document.getElementById(
-    'submitBtn'
-  );
+  const btn = document.getElementById('submitBtn');
 
   if (!btn) {
     alert('ไม่พบปุ่มส่งข้อมูล');
@@ -1349,104 +1294,38 @@ async function handleFormSubmit(event) {
   STATE.isSubmitting = true;
 
   btn.disabled = true;
-
   btn.textContent = 'กำลังอัปโหลดข้อมูล...';
 
-  const payload = {
-    action: 'submit_payment',
-
-    lineUserId: STATE.lineUserId,
-
-    studentId: studentId,
-
-    name: name,
-
-    selectedItems: selectedItems,
-
-    selectedItemsNames: selectedItems.map(
-      function(item) {
-        return item.title;
-      }
-    ).join(', '),
-
-    totalAmount: totalAmount,
-
-    imageBase64: STATE.compressedBase64
-  };
-
   try {
-    const controller = new AbortController();
+    const result = await apiPost({
+      action: 'submit_payment',
 
-    const timeout = setTimeout(
-      function() {
-        controller.abort();
-      },
-      CONFIG.REQUEST_TIMEOUT
-    );
+      studentId: STATE.studentId,
 
-    let response;
+      selectedItems: selectedItems,
 
-    try {
-      response = await fetch(
-        CONFIG.GAS_WEB_APP_URL,
-        {
-          method: 'POST',
+      selectedItemsNames: selectedItems.map(function(item) {
+        return item.title;
+      }).join(', '),
 
-          headers: {
-            'Content-Type': 'text/plain;charset=utf-8'
-          },
+      totalAmount: totalAmount,
 
-          body: JSON.stringify(payload),
-
-          redirect: 'follow',
-
-          signal: controller.signal
-        }
-      );
-
-    } finally {
-      clearTimeout(timeout);
-    }
-
-    const responseText = await response.text();
-
-    let result;
-
-    try {
-      result = JSON.parse(responseText);
-
-    } catch (parseError) {
-      console.error(
-        'Invalid POST Response:',
-        responseText.substring(0, 500)
-      );
-
-      throw new Error(
-        'เซิร์ฟเวอร์ส่งข้อมูลกลับมาไม่ถูกต้อง กรุณาตรวจสอบ Apps Script'
-      );
-    }
-
-    if (!response.ok) {
-      throw new Error(
-        'HTTP Error: ' + response.status
-      );
-    }
+      imageBase64: STATE.compressedBase64
+    });
 
     if (result.status === 'success') {
       alert(
         '✅ ส่งสลิปเรียบร้อยแล้ว!\n\n' +
         'รหัสรายการ: ' + result.txId + '\n' +
-        'ชื่อ: ' + result.name + '\n' +
+        'ชื่อ: ' + (result.name || STATE.studentName) + '\n' +
         'ยอดชำระ: ' +
-        Number(result.totalAmount).toLocaleString('en-US') +
+        Number(result.totalAmount || totalAmount).toLocaleString('en-US') +
         ' บาท\n\n' +
         'กรุณารอแอดมินตรวจสอบ'
       );
 
       if (result.notificationWarning) {
-        console.warn(
-          result.notificationWarning
-        );
+        console.warn(result.notificationWarning);
       }
 
       if (
@@ -1460,17 +1339,11 @@ async function handleFormSubmit(event) {
       }
 
     } else {
-      throw new Error(
-        result.message ||
-        'ไม่สามารถส่งข้อมูลได้'
-      );
+      throw new Error(result.message || 'ไม่สามารถส่งข้อมูลได้');
     }
 
   } catch (error) {
-    console.error(
-      'Submit Error:',
-      error
-    );
+    console.error('Submit Error:', error);
 
     if (error.name === 'AbortError') {
       alert(
@@ -1478,9 +1351,7 @@ async function handleFormSubmit(event) {
       );
 
     } else {
-      alert(
-        'เกิดข้อผิดพลาด: ' + error.message
-      );
+      alert('เกิดข้อผิดพลาด: ' + error.message);
     }
 
     resetSubmitButton(btn);
@@ -1489,7 +1360,7 @@ async function handleFormSubmit(event) {
 
 
 // ==================================================
-// 21. RESET SUBMIT BUTTON
+// 22. RESET SUBMIT BUTTON
 // ==================================================
 
 function resetSubmitButton(button) {
@@ -1498,6 +1369,5 @@ function resetSubmitButton(button) {
   if (!button) return;
 
   button.disabled = false;
-
   button.textContent = 'ยืนยันการส่งสลิป';
 }
