@@ -1,4 +1,4 @@
-/* === นำเข้าฟอนต์ภาษาไทยสวยๆ (ถ้าไม่อยากโหลดจากเน็ต ลบบรรทัด @import ออกได้ครับ) === */
+/* === นำเข้าฟอนต์ภาษาไทยสวยๆ === */
 @import url('https://fonts.googleapis.com/css2?family=Prompt:wght@400;500;600;700&display=swap');
 
 /* === ตัวแปรสีหลัก (แก้ไขธีมสีตรงนี้ได้เลย) === */
@@ -6,7 +6,7 @@
   --primary-color: #06C755;
   --primary-hover: #05b04c;
   --primary-light: rgba(6, 199, 85, 0.12);
-  --bg-color: #f0f4f8;
+  --bg-color: #edf2f7;
   --card-bg: #ffffff;
   --text-main: #1e293b;
   --text-muted: #64748b;
@@ -22,10 +22,10 @@
 
 body {
   font-family: 'Prompt', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  background: linear-gradient(180deg, #eef2f6 0%, #e2e8f0 100%);
+  background-color: var(--bg-color);
   color: var(--text-main);
   margin: 0;
-  padding: 20px 16px;
+  padding: 24px 16px;
   display: flex;
   justify-content: center;
   align-items: flex-start;
@@ -33,16 +33,17 @@ body {
   line-height: 1.5;
 }
 
+/* เพิ่มเงาให้การ์ดลอยเด่นขึ้นแบบมีมิติ */
 .card {
   background-color: var(--card-bg);
   width: 100%;
   max-width: 440px;
-  padding: 28px 24px;
+  padding: 30px 24px;
   border-radius: 24px;
   border: 1px solid rgba(255, 255, 255, 0.8);
   box-shadow: 
-    0 10px 25px -5px rgba(15, 23, 42, 0.06),
-    0 4px 10px -2px rgba(15, 23, 42, 0.03);
+    0 20px 35px -10px rgba(0, 0, 0, 0.08),
+    0 4px 12px -2px rgba(0, 0, 0, 0.04);
 }
 
 h2 {
@@ -57,7 +58,7 @@ h2 {
   padding-bottom: 12px;
 }
 
-/* ขีดเส้นใต้หัวข้อให้ดูมีดีไซน์ */
+/* ขีดเส้นใต้หัวข้อพร้อมเงาเรืองแสงเบาๆ */
 h2::after {
   content: "";
   position: absolute;
@@ -68,6 +69,7 @@ h2::after {
   height: 4px;
   background-color: var(--primary-color);
   border-radius: 99px;
+  box-shadow: 0 2px 6px rgba(6, 199, 85, 0.4);
 }
 
 .hidden {
@@ -99,7 +101,7 @@ h2::after {
   margin-bottom: 8px;
 }
 
-/* ตกแต่ง Select และ Input File */
+/* ตกแต่ง Select และ Input File ให้มีเงาจมลงไปข้างในเล็กน้อย */
 select,
 input[type="file"] {
   width: 100%;
@@ -110,6 +112,7 @@ input[type="file"] {
   font-size: 15px;
   color: var(--text-main);
   background-color: #f8fafc;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.02);
   transition: all 0.2s ease;
   outline: none;
 }
@@ -118,10 +121,10 @@ select:focus,
 input[type="file"]:focus {
   background-color: #ffffff;
   border-color: var(--primary-color);
-  box-shadow: 0 0 0 4px var(--primary-light);
+  box-shadow: 0 0 0 4px var(--primary-light), inset 0 1px 2px rgba(0, 0, 0, 0.01);
 }
 
-/* ตกแต่งปุ่มเลือกไฟล์ด้านใน Input File */
+/* ตกแต่งปุ่มเลือกไฟล์ */
 input[type="file"] {
   padding: 8px 10px;
   font-size: 14px;
@@ -140,14 +143,16 @@ input[type="file"]::file-selector-button {
   font-size: 13px;
   margin-right: 12px;
   cursor: pointer;
-  transition: background-color 0.2s ease;
+  box-shadow: 0 2px 5px rgba(6, 199, 85, 0.15);
+  transition: all 0.2s ease;
 }
 
 input[type="file"]::file-selector-button:hover {
   background-color: rgba(6, 199, 85, 0.22);
+  box-shadow: 0 3px 8px rgba(6, 199, 85, 0.25);
 }
 
-/* กล่องรายการ Checkbox */
+/* กล่องรายการ Checkbox มีเงาจมด้านใน */
 .checkbox-container {
   background-color: #f8fafc;
   border: 1.5px solid var(--border-color);
@@ -155,9 +160,10 @@ input[type="file"]::file-selector-button:hover {
   padding: 8px;
   max-height: 200px;
   overflow-y: auto;
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.03);
 }
 
-/* ปรับแต่ง Scrollbar ให้เรียวสวย */
+/* ปรับแต่ง Scrollbar */
 .checkbox-container::-webkit-scrollbar {
   width: 6px;
 }
@@ -178,12 +184,14 @@ input[type="file"]::file-selector-button:hover {
   font-size: 15px;
   background-color: #ffffff;
   border: 1px solid transparent;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
   transition: all 0.15s ease;
 }
 
 .checkbox-item:hover {
   border-color: var(--border-color);
-  background-color: #f1f5f9;
+  background-color: #ffffff;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.05);
 }
 
 .checkbox-item:last-child {
@@ -208,7 +216,7 @@ input[type="file"]::file-selector-button:hover {
   user-select: none;
 }
 
-/* กล่องแสดงยอดรวม */
+/* กล่องแสดงยอดรวม พร้อมเงาเรืองแสงนุ่มๆ */
 .total-box {
   background: var(--highlight-bg);
   color: var(--highlight-text);
@@ -219,10 +227,10 @@ input[type="file"]::file-selector-button:hover {
   font-size: 19px;
   font-weight: 700;
   margin-bottom: 20px;
-  box-shadow: 0 4px 12px rgba(6, 199, 85, 0.08);
+  box-shadow: 0 6px 16px rgba(6, 199, 85, 0.12);
 }
 
-/* ปุ่มกดส่งข้อมูล */
+/* ปุ่มกดส่งข้อมูล มีเงาและมิติเวลายกตัวขึ้น */
 button {
   width: 100%;
   padding: 15px;
@@ -235,19 +243,19 @@ button {
   border: none;
   border-radius: 14px;
   cursor: pointer;
-  box-shadow: 0 6px 16px rgba(6, 199, 85, 0.28);
+  box-shadow: 0 8px 20px rgba(6, 199, 85, 0.32), 0 2px 4px rgba(0, 0, 0, 0.05);
   transition: all 0.2s ease;
 }
 
 button:hover:not(:disabled) {
   background: var(--primary-hover);
-  transform: translateY(-1px);
-  box-shadow: 0 8px 20px rgba(6, 199, 85, 0.35);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 24px rgba(6, 199, 85, 0.4), 0 4px 8px rgba(0, 0, 0, 0.08);
 }
 
 button:active:not(:disabled) {
   transform: translateY(1px) scale(0.99);
-  box-shadow: 0 3px 10px rgba(6, 199, 85, 0.25);
+  box-shadow: 0 4px 10px rgba(6, 199, 85, 0.25);
 }
 
 button:disabled {
@@ -257,14 +265,15 @@ button:disabled {
   cursor: not-allowed;
 }
 
-/* รูปพรีวิวสลิป */
+/* รูปพรีวิวสลิป มีเงาซ้อนรอบตัวรูป */
 #preview {
   width: 100%;
   max-height: 260px;
   object-fit: contain;
   margin-top: 14px;
-  padding: 6px;
+  padding: 8px;
   background-color: #f8fafc;
   border-radius: 14px;
   border: 1.5px dashed #cbd5e1;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
 }
