@@ -163,6 +163,109 @@
       margin-bottom: 16px;
       line-height: 1.7;
     }
+
+    /* ===== Additional Styling ===== */
+
+    * {
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      min-height: 100vh;
+      background: linear-gradient(
+        135deg,
+        #e8f8ef 0%,
+        #f4f6f8 50%,
+        #e8f0ff 100%
+      );
+      align-items: center;
+    }
+
+    .card {
+      border: 1px solid rgba(255,255,255,0.8);
+      box-shadow: 0 12px 35px rgba(0,0,0,0.07);
+    }
+
+    h2 {
+      font-size: 24px;
+      letter-spacing: -0.5px;
+      margin-bottom: 24px;
+    }
+
+    input[type="text"],
+    input[type="file"] {
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    input:focus {
+      outline: none;
+      border-color: #06C755;
+      box-shadow: 0 0 0 3px rgba(6,199,85,0.12);
+    }
+
+    button {
+      border-radius: 12px;
+      box-shadow: 0 3px 8px rgba(6,199,85,0.15);
+      transition: all 0.2s ease;
+    }
+
+    button:active {
+      transform: scale(0.98);
+    }
+
+    .checkbox-container {
+      background: #fbfdfc;
+      border-radius: 12px;
+      padding: 14px;
+    }
+
+    .checkbox-item {
+      padding: 8px 4px;
+      border-bottom: 1px solid #f0f0f0;
+    }
+
+    .checkbox-item:last-child {
+      border-bottom: none;
+    }
+
+    .checkbox-item input {
+      accent-color: #06C755;
+    }
+
+    .total-box {
+      border: 1px solid #c9efd4;
+      border-radius: 12px;
+    }
+
+    .student-confirm {
+      box-shadow: 0 3px 10px rgba(0,0,0,0.03);
+    }
+
+    .student-info {
+      border: 1px solid #edf0f2;
+    }
+
+    #preview {
+      background: #fafafa;
+      padding: 5px;
+      box-sizing: border-box;
+    }
+
+    @media (max-width: 480px) {
+      body {
+        padding: 14px;
+        align-items: flex-start;
+      }
+
+      .card {
+        padding: 20px;
+        margin-top: 12px;
+      }
+
+      h2 {
+        font-size: 22px;
+      }
+    }
   </style>
 </head>
 
